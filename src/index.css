@@ -1,0 +1,32 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-navy-deep: #0f1623;
+  --color-navy-card: #1a2336;
+  --color-gold-accent: #d4a843;
+  --color-navy-border: #2a3550;
+}
+
+@layer base {
+  body {
+    @apply bg-navy-deep text-white font-sans antialiased;
+  }
+}
+
+/* Custom scrollbar for a professional look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-navy-deep;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-navy-border rounded-full hover:bg-gold-accent/50 transition-colors;
+}

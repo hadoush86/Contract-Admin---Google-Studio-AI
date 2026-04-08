@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contract Admin QS</title>
+    <script>
+      // Early suppression of Talisman extension errors
+      (function() {
+        const suppress = (msg) => msg && msg.toString().includes('Talisman extension');
+        
+        const originalError = console.error;
+        console.error = function(...args) {
+          if (suppress(args[0])) return;
+          originalError.apply(console, args);
+        };
+
+        window.addEventListener('error', function(event) {
+          if (suppress(event.message) || suppress(event.error)) {
+            event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(event) {
+          if (suppress(event.reason)) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
