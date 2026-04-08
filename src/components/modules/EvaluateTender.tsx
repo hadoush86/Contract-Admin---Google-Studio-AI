@@ -16,13 +16,29 @@ import {
   Copy,
   PlusCircle,
   MessageSquare,
-  X
+  X,
+  LayoutGrid,
+  Table as TableIcon,
+  FileSpreadsheet
 } from 'lucide-react';
 import ModuleHeader from '../ModuleHeader';
-import { Bidder, BoQItem, ArithmeticCheckResult, RateComparisonResult } from '../../types';
+import { Bidder, BoQItem, ArithmeticCheckResult, RateComparisonResult, GlobalProject, ModuleId } from '../../types';
 import { evaluateTenderAI } from '../../services/geminiService';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ReferenceLine, 
+  ResponsiveContainer, 
+  Cell 
+} from 'recharts';
 
 const INITIAL_BIDDERS: Bidder[] = [
   { id: '1', name: 'Bidder A' },
@@ -36,13 +52,25 @@ const INITIAL_ITEMS: BoQItem[] = [
   { id: '3', ref: '2.02', description: 'Disposal of surplus material', unit: 'm3', quantity: 5000, rates: { '1': 8, '2': 10, '3': 7 } },
 ];
 
-export default function EvaluateTender() {
+interface EvaluateTenderProps {
+  globalProject: GlobalProject | null;
+  onModuleSelect: (moduleId: ModuleId) => void;
+}
+
+export default function EvaluateTender({ globalProject, onModuleSelect }: EvaluateTenderProps) {
   // Form State
-  const [projectName, setProjectName] = useState('');
+  const [projectName, setProjectName] = useState(globalProject?.projectName || '');
   const [numBidders, setNumBidders] = useState(3);
   const [bidders, setBidders] = useState<Bidder[]>(INITIAL_BIDDERS);
-  const [currency, setCurrency] = useState('AED');
+  const [currency, setCurrency] = useState(globalProject?.currency || 'AED');
   const [standard, setStandard] = useState('CESMM4');
+
+  useEffect(() => {
+    if (globalProject) {
+      setProjectName(globalProject.projectName);
+      setCurrency(globalProject.currency || 'AED');
+    }
+  }, [globalProject]);
 
   // BoQ Items State
   const [items, setItems] = useState<BoQItem[]>(INITIAL_ITEMS);
@@ -53,6 +81,72 @@ export default function EvaluateTender() {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [discussionPoints, setDiscussionPoints] = useState<any[]>([]);
+  const [viewMode, setViewMode] = useState<'table' | 'visual'>('table');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Handlers
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      if (!bstr) return;
+
+      let data: any[] = [];
+
+      try {
+        if (extension === 'csv') {
+          const results = Papa.parse(bstr as string, { header: true });
+          data = results.data;
+        } else {
+          const workbook = XLSX.read(bstr, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          data = XLSX.utils.sheet_to_json(worksheet);
+        }
+
+        // Map data to BoQItem
+        const newItems: BoQItem[] = data.map((row: any, idx: number) => {
+          const itemRates: Record<string, number> = {};
+          bidders.forEach(b => {
+            const rateValue = row[b.name] || row[`${b.name} Rate`] || row[b.id] || 0;
+            itemRates[b.id] = parseFloat(rateValue) || 0;
+          });
+
+          return {
+            id: String(Date.now() + idx),
+            ref: String(row.Ref || row.Reference || row.Item || ''),
+            description: String(row.Description || row.Desc || ''),
+            unit: String(row.Unit || ''),
+            quantity: parseFloat(row.Qty || row.Quantity || 0),
+            rates: itemRates
+          };
+        }).filter(item => item.description || item.ref);
+
+        if (newItems.length > 0) {
+          setItems(newItems);
+          alert(`Successfully imported ${newItems.length} items.`);
+        } else {
+          alert('No valid items found in the file. Please ensure columns match: Ref, Description, Unit, Qty, and Bidder Names.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error parsing file. Please ensure it is a valid Excel or CSV file.');
+      }
+    };
+
+    if (extension === 'csv') {
+      reader.readAsText(file);
+    } else {
+      reader.readAsBinaryString(file);
+    }
+    
+    e.target.value = '';
+  };
 
   // Keyboard shortcut
   useEffect(() => {
@@ -67,7 +161,6 @@ export default function EvaluateTender() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [projectName, currency, standard, bidders, items, isAnalyzing]);
 
-  // Handlers
   const handleNumBiddersChange = (n: number) => {
     const newNum = Math.min(Math.max(n, 2), 8);
     setNumBidders(newNum);
@@ -410,9 +503,19 @@ export default function EvaluateTender() {
                 <h3 className="font-bold">Bill of Quantities (BoQ) Data</h3>
               </div>
               <div className="flex gap-2">
-                <button className="px-3 py-1.5 bg-navy-deep border border-navy-border rounded-lg text-xs flex items-center gap-2 hover:border-gold-accent/50 transition-all">
-                  <Upload className="w-3 h-3" />
-                  Import Excel
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileUpload} 
+                  accept=".csv, .xlsx, .xls" 
+                  className="hidden" 
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-1.5 bg-navy-deep border border-navy-border rounded-lg text-xs flex items-center gap-2 hover:border-gold-accent/50 transition-all"
+                >
+                  <FileSpreadsheet className="w-3 h-3" />
+                  Import Excel/CSV
                 </button>
                 <button 
                   onClick={addItem}
@@ -546,57 +649,149 @@ export default function EvaluateTender() {
                   <ArrowRightLeft className="w-5 h-5 text-gold-accent" />
                   <h3 className="font-bold">Rate Comparison Matrix</h3>
                 </div>
-                <button 
-                  onClick={exportToCsv}
-                  className="text-xs font-bold text-gold-accent flex items-center gap-2 hover:underline"
-                >
-                  <Download className="w-4 h-4" />
-                  Export CSV
-                </button>
+                <div className="flex items-center gap-4">
+                  <div className="flex p-1 bg-navy-deep rounded-lg border border-navy-border">
+                    <button 
+                      onClick={() => setViewMode('table')}
+                      className={`p-1.5 rounded-md transition-all ${viewMode === 'table' ? 'bg-gold-accent text-navy-deep' : 'text-gray-400 hover:text-white'}`}
+                      title="Table View"
+                    >
+                      <TableIcon className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setViewMode('visual')}
+                      className={`p-1.5 rounded-md transition-all ${viewMode === 'visual' ? 'bg-gold-accent text-navy-deep' : 'text-gray-400 hover:text-white'}`}
+                      title="Visual View"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button 
+                    onClick={exportToCsv}
+                    className="text-xs font-bold text-gold-accent flex items-center gap-2 hover:underline"
+                  >
+                    <Download className="w-4 h-4" />
+                    Export CSV
+                  </button>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-navy-deep/40 text-gray-500 uppercase text-[10px] tracking-widest">
-                      <th className="px-6 py-4 font-bold">Item Ref</th>
-                      <th className="px-6 py-4 font-bold">Description</th>
-                      <th className="px-6 py-4 font-bold text-right">Avg Rate</th>
-                      {bidders.map(b => (
-                        <th key={b.id} className="px-6 py-4 font-bold text-center">{b.name}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-navy-border">
-                    {comparisonResults.map((res, i) => (
-                      <tr key={i}>
-                        <td className="px-6 py-4 font-mono text-xs">{res.itemRef}</td>
-                        <td className="px-6 py-4 text-xs">{res.description}</td>
-                        <td className="px-6 py-4 text-right font-mono text-xs">{res.averageRate.toFixed(2)}</td>
-                        {bidders.map(b => {
-                          const data = res.bidderRates[b.id];
-                          const colorClass = data.status === 'RED' ? 'bg-red-500/20 text-red-400' : data.status === 'AMBER' ? 'bg-yellow-500/20 text-yellow-400' : '';
-                          return (
-                            <td key={b.id} className={`px-6 py-4 text-center font-mono text-xs relative group ${colorClass}`}>
-                              <div>{data.rate.toFixed(2)}</div>
-                              <div className="text-[9px] opacity-70">{data.deviation > 0 ? '+' : ''}{data.deviation.toFixed(1)}%</div>
-                              
-                              {data.status === 'RED' && (
-                                <button 
-                                  onClick={() => flagForDiscussion(res, b.name, data)}
-                                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-red-500 text-white rounded shadow-lg"
-                                  title="Flag for Discussion"
-                                >
-                                  <Flag className="w-3 h-3" />
-                                </button>
-                              )}
-                            </td>
-                          );
-                        })}
+
+              {viewMode === 'table' ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-navy-deep/40 text-gray-500 uppercase text-[10px] tracking-widest">
+                        <th className="px-6 py-4 font-bold">Item Ref</th>
+                        <th className="px-6 py-4 font-bold">Description</th>
+                        <th className="px-6 py-4 font-bold text-right">Avg Rate</th>
+                        {bidders.map(b => (
+                          <th key={b.id} className="px-6 py-4 font-bold text-center">{b.name}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-navy-border">
+                      {comparisonResults.map((res, i) => (
+                        <tr key={i}>
+                          <td className="px-6 py-4 font-mono text-xs">{res.itemRef}</td>
+                          <td className="px-6 py-4 text-xs">{res.description}</td>
+                          <td className="px-6 py-4 text-right font-mono text-xs">{res.averageRate.toFixed(2)}</td>
+                          {bidders.map(b => {
+                            const data = res.bidderRates[b.id];
+                            const colorClass = data.status === 'RED' ? 'bg-red-500/20 text-red-400' : data.status === 'AMBER' ? 'bg-yellow-500/20 text-yellow-400' : '';
+                            return (
+                              <td key={b.id} className={`px-6 py-4 text-center font-mono text-xs relative group ${colorClass}`}>
+                                <div>{data.rate.toFixed(2)}</div>
+                                <div className="text-[9px] opacity-70">{data.deviation > 0 ? '+' : ''}{data.deviation.toFixed(1)}%</div>
+                                
+                                {data.status === 'RED' && (
+                                  <button 
+                                    onClick={() => flagForDiscussion(res, b.name, data)}
+                                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 bg-red-500 text-white rounded shadow-lg"
+                                    title="Flag for Discussion"
+                                  >
+                                    <Flag className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {comparisonResults.map((res, i) => {
+                    const chartData = bidders.map(b => ({
+                      name: b.name,
+                      rate: res.bidderRates[b.id].rate,
+                      deviation: res.bidderRates[b.id].deviation,
+                      status: res.bidderRates[b.id].status
+                    }));
+
+                    return (
+                      <div key={i} className="bg-navy-deep/30 border border-navy-border rounded-xl p-4 space-y-4">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">{res.itemRef}</div>
+                            <div className="text-xs font-bold text-white line-clamp-1">{res.description}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-[10px] text-gray-500 uppercase font-bold">Avg Rate</div>
+                            <div className="text-xs font-mono text-gold-accent">{res.averageRate.toFixed(2)}</div>
+                          </div>
+                        </div>
+
+                        <div className="h-48 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                              <XAxis 
+                                dataKey="name" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#94a3b8', fontSize: 10 }} 
+                              />
+                              <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#94a3b8', fontSize: 10 }} 
+                              />
+                              <Tooltip 
+                                cursor={{ fill: '#1e293b', opacity: 0.4 }}
+                                contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '8px', fontSize: '10px' }}
+                                itemStyle={{ color: '#d4a843' }}
+                              />
+                              <ReferenceLine y={res.averageRate} stroke="#d4a843" strokeDasharray="3 3" label={{ position: 'right', value: 'Avg', fill: '#d4a843', fontSize: 8 }} />
+                              <Bar dataKey="rate" radius={[4, 4, 0, 0]}>
+                                {chartData.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={entry.status === 'RED' ? '#f87171' : entry.status === 'AMBER' ? '#fbbf24' : '#3b82f6'} 
+                                    fillOpacity={0.8}
+                                  />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-2 border-t border-navy-border/50">
+                          {chartData.map((d, idx) => (
+                            <div key={idx} className="text-center">
+                              <div className="text-[8px] text-gray-500 uppercase font-bold">{d.name}</div>
+                              <div className={`text-[10px] font-mono font-bold ${d.status === 'RED' ? 'text-red-400' : d.status === 'AMBER' ? 'text-yellow-400' : 'text-blue-400'}`}>
+                                {d.deviation > 0 ? '+' : ''}{d.deviation.toFixed(1)}%
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

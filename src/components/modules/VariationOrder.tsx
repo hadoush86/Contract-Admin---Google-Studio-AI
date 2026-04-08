@@ -12,12 +12,15 @@ import {
   AlertCircle,
   CheckCircle2,
   Table as TableIcon,
-  PlusCircle
+  PlusCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 import ModuleHeader from '../ModuleHeader';
-import { VOData, VORegisterEntry } from '../../types';
+import { VOData, VORegisterEntry, GlobalProject, ModuleId } from '../../types';
 import { generateVODocumentAI } from '../../services/geminiService';
 import ReactMarkdown from 'react-markdown';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
 const VO_TYPES = [
   "Engineer-Initiated (Sub-Clause 13.1)",
@@ -41,11 +44,34 @@ const INITIAL_VO_STATE: VOData = {
   jurisdiction: 'UAE'
 };
 
-export default function VariationOrder() {
+interface VariationOrderProps {
+  globalProject: GlobalProject | null;
+  onModuleSelect: (moduleId: ModuleId) => void;
+}
+
+export default function VariationOrder({ globalProject, onModuleSelect }: VariationOrderProps) {
   const [activeTab, setActiveTab] = useState<'issue' | 'register'>('issue');
 
   // Issue VO State
-  const [voFormData, setVoFormData] = useState<VOData>(INITIAL_VO_STATE);
+  const [voFormData, setVoFormData] = useState<VOData>({
+    ...INITIAL_VO_STATE,
+    projectDetails: globalProject ? `${globalProject.projectName} - ${globalProject.contractNumber}` : INITIAL_VO_STATE.projectDetails,
+    fidicBook: (globalProject?.fidicBook as any) || INITIAL_VO_STATE.fidicBook,
+    jurisdiction: (globalProject?.jurisdiction as any) || INITIAL_VO_STATE.jurisdiction,
+    currency: globalProject?.currency || INITIAL_VO_STATE.currency
+  });
+
+  useEffect(() => {
+    if (globalProject) {
+      setVoFormData(prev => ({
+        ...prev,
+        projectDetails: `${globalProject.projectName} - ${globalProject.contractNumber}`,
+        fidicBook: (globalProject.fidicBook as any) || prev.fidicBook,
+        jurisdiction: (globalProject.jurisdiction as any) || prev.jurisdiction,
+        currency: globalProject.currency || prev.currency
+      }));
+    }
+  }, [globalProject]);
   const [generatedDoc, setGeneratedDoc] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
@@ -55,6 +81,7 @@ export default function VariationOrder() {
     { id: '1', voNo: 'VO-001', date: '2026-03-15', description: 'Additional Piling Works', subClause: '13.1', originalSum: 10000000, voValue: 250000, eotGranted: 5, status: 'Agreed' },
     { id: '2', voNo: 'VO-002', date: '2026-03-28', description: 'Relocation of Utilities', subClause: '13.1', originalSum: 10000000, voValue: 120000, eotGranted: 2, status: 'Issued' },
   ]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut
   useEffect(() => {
@@ -135,6 +162,63 @@ export default function VariationOrder() {
 
   const removeRegisterRow = (id: string) => {
     setRegister(prev => prev.filter(row => row.id !== id));
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      if (!bstr) return;
+
+      let data: any[] = [];
+
+      try {
+        if (extension === 'csv') {
+          const results = Papa.parse(bstr as string, { header: true });
+          data = results.data;
+        } else {
+          const workbook = XLSX.read(bstr, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          data = XLSX.utils.sheet_to_json(worksheet);
+        }
+
+        const newRows: VORegisterEntry[] = data.map((row: any, idx: number) => {
+          return {
+            id: String(Date.now() + idx),
+            voNo: String(row['VO No.'] || row.VONo || row.VO || ''),
+            date: String(row.Date || new Date().toISOString().split('T')[0]),
+            description: String(row.Description || row.Desc || ''),
+            subClause: String(row['Sub-Clause'] || row.SubClause || '13.1'),
+            originalSum: parseFloat(row['Original Sum'] || row.OriginalSum || 0),
+            voValue: parseFloat(row['VO Value'] || row.VOValue || 0),
+            eotGranted: parseInt(row['EOT Granted'] || row.EOT || 0),
+            status: (row.Status || 'Draft') as any
+          };
+        });
+
+        if (newRows.length > 0) {
+          setRegister(prev => [...prev, ...newRows]);
+          alert(`Successfully imported ${newRows.length} VO entries.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error parsing file.');
+      }
+    };
+
+    if (extension === 'csv') {
+      reader.readAsText(file);
+    } else {
+      reader.readAsBinaryString(file);
+    }
+    
+    e.target.value = '';
   };
 
   const totals = useMemo(() => {
@@ -404,8 +488,18 @@ export default function VariationOrder() {
                     <div className="h-4 bg-navy-border rounded w-3/4" />
                   </div>
                 ) : (
-                  <div className="whitespace-pre-wrap text-gray-200">
-                    {generatedDoc}
+                  <div className="space-y-6">
+                    <div className="whitespace-pre-wrap text-gray-200">
+                      {generatedDoc}
+                    </div>
+                    <div className="pt-6 border-t border-navy-border">
+                      <button 
+                        onClick={() => onModuleSelect('ca-tracker')}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gold-accent/10 border border-gold-accent/30 rounded-xl text-xs font-bold text-gold-accent hover:bg-gold-accent/20 transition-all"
+                      >
+                        Next step: Update CA Tracker VO Register →
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -420,6 +514,20 @@ export default function VariationOrder() {
               Variation Order Register
             </h3>
             <div className="flex gap-3">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                accept=".csv, .xlsx, .xls" 
+                className="hidden" 
+              />
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 bg-navy-card border border-navy-border rounded-lg text-sm hover:bg-navy-border transition-colors flex items-center gap-2"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                Import CSV/Excel
+              </button>
               <button 
                 onClick={exportRegister}
                 className="px-4 py-2 bg-navy-card border border-navy-border rounded-lg text-sm hover:bg-navy-border transition-colors flex items-center gap-2"

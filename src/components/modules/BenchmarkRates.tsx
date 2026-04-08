@@ -16,12 +16,15 @@ import {
   Info,
   Copy,
   Download,
-  PlusCircle
+  PlusCircle,
+  FileSpreadsheet
 } from 'lucide-react';
 import ModuleHeader from '../ModuleHeader';
-import { BenchmarkQueryData, BenchmarkEntry, BenchmarkWorkItem } from '../../types';
+import { BenchmarkQueryData, BenchmarkEntry, BenchmarkWorkItem, GlobalProject, ModuleId } from '../../types';
 import { getBenchmarkRatesAI } from '../../services/geminiService';
 import ReactMarkdown from 'react-markdown';
+import * as XLSX from 'xlsx';
+import Papa from 'papaparse';
 
 const WORK_ELEMENTS = {
   "DREDGING": [
@@ -88,11 +91,30 @@ const INITIAL_QUERY_STATE: BenchmarkQueryData = {
   currency: 'AED'
 };
 
-export default function BenchmarkRates() {
+interface BenchmarkRatesProps {
+  globalProject: GlobalProject | null;
+  onModuleSelect: (moduleId: ModuleId) => void;
+}
+
+export default function BenchmarkRates({ globalProject, onModuleSelect }: BenchmarkRatesProps) {
   const [activeTab, setActiveTab] = useState<'query' | 'add'>('query');
 
   // Query State
-  const [queryData, setQueryData] = useState<BenchmarkQueryData>(INITIAL_QUERY_STATE);
+  const [queryData, setQueryData] = useState<BenchmarkQueryData>({
+    ...INITIAL_QUERY_STATE,
+    location: (globalProject?.jurisdiction as any) || INITIAL_QUERY_STATE.location,
+    currency: globalProject?.currency || INITIAL_QUERY_STATE.currency
+  });
+
+  useEffect(() => {
+    if (globalProject) {
+      setQueryData(prev => ({
+        ...prev,
+        location: (globalProject.jurisdiction as any) || prev.location,
+        currency: globalProject.currency || prev.currency
+      }));
+    }
+  }, [globalProject]);
   const [queryResult, setQueryResult] = useState('');
   const [isQuerying, setIsQuerying] = useState(false);
   const [queryError, setQueryError] = useState('');
@@ -112,6 +134,7 @@ export default function BenchmarkRates() {
     currency: 'AED',
     items: []
   });
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut
   useEffect(() => {
@@ -219,6 +242,62 @@ export default function BenchmarkRates() {
       items: []
     });
     alert('Data saved to session database!');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      if (!bstr) return;
+
+      let data: any[] = [];
+
+      try {
+        if (extension === 'csv') {
+          const results = Papa.parse(bstr as string, { header: true });
+          data = results.data;
+        } else {
+          const workbook = XLSX.read(bstr, { type: 'binary' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          data = XLSX.utils.sheet_to_json(worksheet);
+        }
+
+        const newItems: BenchmarkWorkItem[] = data.map((row: any, idx: number) => {
+          return {
+            id: String(Date.now() + idx),
+            tag: String(row.Tag || row.Element || row.WorkElement || WORK_ELEMENTS.DREDGING[0]),
+            unit: String(row.Unit || 'm3'),
+            quantity: parseFloat(row.Qty || row.Quantity || 0),
+            lowestRate: parseFloat(row.Lowest || 0),
+            highestRate: parseFloat(row.Highest || 0),
+            averageRate: parseFloat(row.Average || row.Avg || 0),
+            awardedRate: parseFloat(row.Awarded || row.Rate || 0)
+          };
+        });
+
+        if (newItems.length > 0) {
+          setNewEntry(prev => ({ ...prev, items: [...prev.items, ...newItems] }));
+          alert(`Successfully imported ${newItems.length} work items.`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Error parsing file.');
+      }
+    };
+
+    if (extension === 'csv') {
+      reader.readAsText(file);
+    } else {
+      reader.readAsBinaryString(file);
+    }
+    
+    e.target.value = '';
   };
 
   return (
@@ -539,13 +618,29 @@ export default function BenchmarkRates() {
                     <TableIcon className="w-4 h-4" />
                     Work Items
                   </h3>
-                  <button 
-                    onClick={addWorkItem}
-                    className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gold-accent hover:text-white transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Add Row
-                  </button>
+                  <div className="flex gap-3">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileUpload} 
+                      accept=".csv, .xlsx, .xls" 
+                      className="hidden" 
+                    />
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-gold-accent transition-colors"
+                    >
+                      <FileSpreadsheet className="w-3 h-3" />
+                      Import Excel/CSV
+                    </button>
+                    <button 
+                      onClick={addWorkItem}
+                      className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gold-accent hover:text-white transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Add Row
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">

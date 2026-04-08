@@ -3,10 +3,15 @@ import {
   Mail, 
   BarChart3, 
   ShieldCheck, 
+  AlertTriangle,
   FileEdit, 
   Database, 
   LayoutDashboard,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  Ruler,
+  ClipboardCheck,
+  GanttChart
 } from 'lucide-react';
 import { ModuleId, MODULES } from '../types';
 import { motion } from 'motion/react';
@@ -20,8 +25,13 @@ const iconMap: Record<string, React.ElementType> = {
   Mail,
   BarChart3,
   ShieldCheck,
+  AlertTriangle,
   FileEdit,
   Database,
+  FileText,
+  Ruler,
+  ClipboardCheck,
+  GanttChart,
 };
 
 export default function Sidebar({ activeModule, setActiveModule }: SidebarProps) {
@@ -64,7 +74,7 @@ export default function Sidebar({ activeModule, setActiveModule }: SidebarProps)
           </div>
 
           {MODULES.map((module) => {
-            const Icon = iconMap[module.icon];
+            const Icon = iconMap[module.icon] || Mail;
             const isActive = activeModule === module.id;
 
             return (
@@ -115,7 +125,7 @@ export default function Sidebar({ activeModule, setActiveModule }: SidebarProps)
         </button>
 
         {MODULES.map((module) => {
-          const Icon = iconMap[module.icon];
+          const Icon = iconMap[module.icon] || Mail;
           const isActive = activeModule === module.id;
 
           return (

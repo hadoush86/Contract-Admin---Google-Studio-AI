@@ -3,9 +3,14 @@ import {
   Mail, 
   BarChart3, 
   ShieldCheck, 
+  AlertTriangle,
   FileEdit, 
   Database,
-  ArrowUpRight
+  ArrowUpRight,
+  FileText,
+  Ruler,
+  ClipboardCheck,
+  GanttChart
 } from 'lucide-react';
 import { ModuleId, MODULES } from '../types';
 import { motion } from 'motion/react';
@@ -18,8 +23,13 @@ const iconMap: Record<string, React.ElementType> = {
   Mail,
   BarChart3,
   ShieldCheck,
+  AlertTriangle,
   FileEdit,
   Database,
+  FileText,
+  Ruler,
+  ClipboardCheck,
+  GanttChart,
 };
 
 const container = {
@@ -61,7 +71,7 @@ export default function Dashboard({ onModuleSelect }: DashboardProps) {
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       >
         {MODULES.map((module) => {
-          const Icon = iconMap[module.icon];
+          const Icon = iconMap[module.icon] || Mail;
           return (
             <motion.button
               key={module.id}

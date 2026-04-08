@@ -3,10 +3,15 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import DraftLetter from './components/modules/DraftLetter';
 import EvaluateTender from './components/modules/EvaluateTender';
+import ProduceBoQ from './components/modules/ProduceBoQ';
+import TakeOff from './components/modules/TakeOff';
 import ReviewContract from './components/modules/ReviewContract';
+import BespokeReview from './components/modules/BespokeReview';
+import PreAwardReview from './components/modules/PreAwardReview';
+import CATracker from './components/modules/CATracker';
 import VariationOrder from './components/modules/VariationOrder';
 import BenchmarkRates from './components/modules/BenchmarkRates';
-import { ModuleId } from './types';
+import { ModuleId, LetterFormData, GlobalProject } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { Calendar, Eraser, StickyNote, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -15,6 +20,8 @@ export default function App() {
   const [sessionNotes, setSessionNotes] = useState('');
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [clearKey, setClearKey] = useState(0);
+  const [draftLetterInitialData, setDraftLetterInitialData] = useState<Partial<LetterFormData> | undefined>(undefined);
+  const [globalProject, setGlobalProject] = useState<GlobalProject | null>(null);
 
   const handleClearAll = () => {
     if (window.confirm('Are you sure you want to clear all forms? This will reset your current work in all modules.')) {
@@ -28,15 +35,50 @@ export default function App() {
       case 'dashboard':
         return <Dashboard key={`dashboard-${clearKey}`} onModuleSelect={setActiveModule} />;
       case 'draft-letter':
-        return <DraftLetter key={`draft-${clearKey}`} />;
+        return <DraftLetter key={`draft-${clearKey}`} initialData={draftLetterInitialData} globalProject={globalProject} onModuleSelect={setActiveModule} />;
       case 'evaluate-tender':
-        return <EvaluateTender key={`tender-${clearKey}`} />;
+        return <EvaluateTender key={`tender-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
+      case 'produce-boq':
+        return <ProduceBoQ key={`boq-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
+      case 'take-off':
+        return <TakeOff key={`takeoff-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
       case 'review-contract':
-        return <ReviewContract key={`review-${clearKey}`} />;
+        return <ReviewContract key={`review-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
+      case 'bespoke-review':
+        return (
+          <BespokeReview 
+            key={`bespoke-${clearKey}`} 
+            globalProject={globalProject}
+            onModuleSelect={setActiveModule}
+            onGenerateNegotiationLetter={(topRedItems) => {
+              setDraftLetterInitialData({
+                subject: 'Negotiation of Bespoke Contract Terms',
+                background: topRedItems,
+                instructions: 'Draft a formal negotiation letter requesting amendments to the identified RED risk items.'
+              });
+              setActiveModule('draft-letter');
+            }}
+          />
+        );
+      case 'pre-award-review':
+        return <PreAwardReview key={`preaward-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
+      case 'ca-tracker':
+        return (
+          <CATracker 
+            key={`ca-${clearKey}`} 
+            globalProject={globalProject}
+            onProjectUpdate={setGlobalProject}
+            onDraftLetter={(data) => {
+              setDraftLetterInitialData(data);
+              setActiveModule('draft-letter');
+            }}
+            onModuleSelect={setActiveModule}
+          />
+        );
       case 'variation-order':
-        return <VariationOrder key={`vo-${clearKey}`} />;
+        return <VariationOrder key={`vo-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
       case 'benchmark-rates':
-        return <BenchmarkRates key={`benchmark-${clearKey}`} />;
+        return <BenchmarkRates key={`benchmark-${clearKey}`} globalProject={globalProject} onModuleSelect={setActiveModule} />;
       default:
         return <Dashboard key={`dashboard-${clearKey}`} onModuleSelect={setActiveModule} />;
     }

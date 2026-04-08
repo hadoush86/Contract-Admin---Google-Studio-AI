@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Send, FileText, Copy, Download, Loader2, AlertCircle, RefreshCw, PlusCircle } from 'lucide-react';
+import { Mail, Send, FileText, Copy, Download, Loader2, AlertCircle, RefreshCw, PlusCircle, Upload } from 'lucide-react';
 import ModuleHeader from '../ModuleHeader';
 import { motion, AnimatePresence } from 'motion/react';
-import { LetterFormData } from '../../types';
+import { LetterFormData, GlobalProject, ModuleId } from '../../types';
 import { generateContractualLetter, refineLetterAI } from '../../services/geminiService';
 
 const LETTER_TYPES = [
@@ -32,13 +32,41 @@ const INITIAL_STATE: LetterFormData = {
   priorRefs: ''
 };
 
-export default function DraftLetter() {
-  const [formData, setFormData] = useState<LetterFormData>(INITIAL_STATE);
+interface DraftLetterProps {
+  initialData?: Partial<LetterFormData>;
+  globalProject: GlobalProject | null;
+  onModuleSelect: (moduleId: ModuleId) => void;
+}
+
+export default function DraftLetter({ initialData, globalProject, onModuleSelect }: DraftLetterProps) {
+  const [formData, setFormData] = useState<LetterFormData>({
+    ...INITIAL_STATE,
+    projectName: globalProject?.projectName || INITIAL_STATE.projectName,
+    contractNumber: globalProject?.contractNumber || INITIAL_STATE.contractNumber,
+    fidicBook: (globalProject?.fidicBook as any) || INITIAL_STATE.fidicBook,
+    jurisdiction: (globalProject?.jurisdiction as any) || INITIAL_STATE.jurisdiction,
+    contractorCompany: globalProject?.contractor || INITIAL_STATE.contractorCompany,
+    ...initialData
+  });
+
+  useEffect(() => {
+    if (globalProject && !initialData) {
+      setFormData(prev => ({
+        ...prev,
+        projectName: globalProject.projectName,
+        contractNumber: globalProject.contractNumber,
+        fidicBook: (globalProject.fidicBook as any) || prev.fidicBook,
+        jurisdiction: (globalProject.jurisdiction as any) || prev.jurisdiction,
+        contractorCompany: globalProject.contractor || prev.contractorCompany
+      }));
+    }
+  }, [globalProject, initialData]);
   const [generatedLetter, setGeneratedLetter] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRefining, setIsRefining] = useState(false);
   const [error, setError] = useState('');
   const [refinementText, setRefinementText] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut
   useEffect(() => {
@@ -60,6 +88,34 @@ export default function DraftLetter() {
 
   const handleToggle = () => {
     setFormData(prev => ({ ...prev, timeBarRequired: !prev.timeBarRequired }));
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+
+    reader.onload = (evt) => {
+      const content = evt.target?.result;
+      if (typeof content === 'string') {
+        // Append to background or instructions
+        setFormData(prev => ({ 
+          ...prev, 
+          background: prev.background ? `${prev.background}\n\n[From ${file.name}]:\n${content}` : content 
+        }));
+        alert(`Successfully loaded text from ${file.name} into Background field.`);
+      }
+    };
+
+    if (extension === 'txt') {
+      reader.readAsText(file);
+    } else {
+      alert('Currently only .txt files are supported for direct text extraction.');
+    }
+    
+    e.target.value = '';
   };
 
   const handleGenerate = async () => {
@@ -244,6 +300,21 @@ export default function DraftLetter() {
               Letter Content
             </h3>
             <div className="space-y-4">
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileUpload} 
+                accept=".txt" 
+                className="hidden" 
+              />
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center py-4 border-2 border-dashed border-navy-border rounded-xl bg-navy-deep/20 hover:border-gold-accent/30 transition-colors cursor-pointer group"
+              >
+                <Upload className="w-6 h-6 text-gold-accent mb-2 group-hover:scale-110 transition-transform" />
+                <span className="text-[10px] font-bold uppercase tracking-widest">Upload Context (.txt)</span>
+              </div>
+
               <div>
                 <label className="block text-xs text-gray-500 mb-1 uppercase font-bold">Subject Line</label>
                 <input name="subject" value={formData.subject} onChange={handleInputChange} type="text" placeholder="Subject of the letter" className="w-full bg-navy-deep border border-navy-border rounded-lg px-3 py-2 text-sm focus:border-gold-accent outline-none" />
@@ -356,8 +427,18 @@ export default function DraftLetter() {
                   <div className="h-4 bg-navy-border rounded w-3/4" />
                 </div>
               ) : (
-                <div className="whitespace-pre-wrap text-gray-200">
-                  {generatedLetter}
+                <div className="space-y-6">
+                  <div className="whitespace-pre-wrap text-gray-200">
+                    {generatedLetter}
+                  </div>
+                  <div className="pt-6 border-t border-navy-border">
+                    <button 
+                      onClick={() => onModuleSelect('ca-tracker')}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gold-accent/10 border border-gold-accent/30 rounded-xl text-xs font-bold text-gold-accent hover:bg-gold-accent/20 transition-all"
+                    >
+                      Next step: Log this letter in CA Tracker →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
