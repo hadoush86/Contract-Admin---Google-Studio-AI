@@ -15,13 +15,19 @@ import { ModuleId, LetterFormData, GlobalProject } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 import { Calendar, Eraser, StickyNote, X, ChevronLeft, ChevronRight } from 'lucide-react';
 
+const SESSION_NOTES_KEY = 'contractAdmin_sessionNotes';
+
 export default function App() {
   const [activeModule, setActiveModule] = useState<ModuleId>('dashboard');
-  const [sessionNotes, setSessionNotes] = useState('');
+  const [sessionNotes, setSessionNotes] = useState(() => localStorage.getItem(SESSION_NOTES_KEY) ?? '');
   const [isNotesOpen, setIsNotesOpen] = useState(false);
   const [clearKey, setClearKey] = useState(0);
   const [draftLetterInitialData, setDraftLetterInitialData] = useState<Partial<LetterFormData> | undefined>(undefined);
   const [globalProject, setGlobalProject] = useState<GlobalProject | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(SESSION_NOTES_KEY, sessionNotes);
+  }, [sessionNotes]);
 
   const handleClearAll = () => {
     if (window.confirm('Are you sure you want to clear all forms? This will reset your current work in all modules.')) {
@@ -171,12 +177,12 @@ export default function App() {
                   <textarea 
                     value={sessionNotes}
                     onChange={(e) => setSessionNotes(e.target.value)}
-                    placeholder="Type your project notes, reminders, or observations here. These will persist for your current session..."
+                    placeholder="Type your project notes, reminders, or observations here. Notes are saved automatically and will persist across page refreshes..."
                     className="w-full h-full bg-navy-deep border border-navy-border rounded-xl p-4 text-sm focus:border-gold-accent outline-none resize-none font-sans leading-relaxed"
                   />
                 </div>
                 <div className="p-6 border-t border-navy-border bg-navy-deep/50 text-[10px] text-gray-500 italic">
-                  Note: These notes are stored in memory and will be lost if the page is refreshed.
+                  Notes are saved automatically to this browser and will persist across page refreshes.
                 </div>
               </motion.aside>
             </>
