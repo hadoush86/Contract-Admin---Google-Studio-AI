@@ -32,6 +32,7 @@ export interface BoQItem {
   unit: string;
   quantity: number;
   rates: Record<string, number>; // bidderId -> rate
+  statedAmounts?: Record<string, number>; // bidderId -> bidder's own stated total (from spreadsheet import)
 }
 
 export interface Bidder {
