@@ -24,6 +24,7 @@ import {
 import ModuleHeader from '../ModuleHeader';
 import { Bidder, BoQItem, ArithmeticCheckResult, RateComparisonResult, GlobalProject, ModuleId } from '../../types';
 import { evaluateTenderAI } from '../../services/geminiService';
+import { calculateArithmeticCheck, calculateRateComparison } from '../../utils/tenderCalculations';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -208,59 +209,11 @@ export default function EvaluateTender({ globalProject, onModuleSelect }: Evalua
 
   // Analysis Logic
   const runArithmeticCheck = () => {
-    const results: ArithmeticCheckResult[] = bidders.map(bidder => {
-      let statedSum = 0;
-      let calculatedSum = 0;
-      let errors = 0;
-
-      items.forEach(item => {
-        const rate = item.rates[bidder.id] || 0;
-        const amount = rate * item.quantity;
-        const hasError = rate === 18; 
-        if (hasError) errors++;
-        
-        calculatedSum += amount;
-        statedSum += hasError ? amount * 1.1 : amount;
-      });
-
-      return {
-        bidderId: bidder.id,
-        bidderName: bidder.name,
-        statedSum,
-        calculatedSum,
-        variance: statedSum - calculatedSum,
-        errors
-      };
-    });
-    setArithmeticResults(results);
+    setArithmeticResults(calculateArithmeticCheck(bidders, items));
   };
 
   const runRateComparison = () => {
-    const results: RateComparisonResult[] = items.map(item => {
-      const ratesArray = bidders.map(b => item.rates[b.id] || 0);
-      const averageRate = ratesArray.reduce((a, b) => a + b, 0) / ratesArray.length;
-
-      const bidderRates: Record<string, any> = {};
-      bidders.forEach(bidder => {
-        const rate = item.rates[bidder.id] || 0;
-        const deviation = averageRate === 0 ? 0 : ((rate - averageRate) / averageRate) * 100;
-        
-        let status: 'NORMAL' | 'AMBER' | 'RED' = 'NORMAL';
-        if (Math.abs(deviation) > 30) status = 'RED';
-        else if (Math.abs(deviation) > 15) status = 'AMBER';
-
-        bidderRates[bidder.id] = { rate, deviation, status };
-      });
-
-      return {
-        itemId: item.id,
-        itemRef: item.ref,
-        description: item.description,
-        averageRate,
-        bidderRates
-      };
-    });
-    setComparisonResults(results);
+    setComparisonResults(calculateRateComparison(bidders, items));
   };
 
   const generateAiSummary = async () => {
@@ -327,9 +280,11 @@ export default function EvaluateTender({ globalProject, onModuleSelect }: Evalua
   const exportToCsv = () => {
     if (!comparisonResults) return;
     
-    let csv = `Item Ref,Description,Average Rate,${bidders.map(b => `${b.name} Rate,${b.name} Dev %`).join(',')}\n`;
+    let csv = `Item Ref,Description,Average Rate,${bidders.map(b => `${b.name} Rate,${b.name} Dev %`).join(',')}
+`;
     comparisonResults.forEach(res => {
-      csv += `"${res.itemRef}","${res.description}",${res.averageRate.toFixed(2)},${bidders.map(b => `${res.bidderRates[b.id].rate},${res.bidderRates[b.id].deviation.toFixed(1)}%`).join(',')}\n`;
+      csv += `"${res.itemRef}","${res.description}",${res.averageRate.toFixed(2)},${bidders.map(b => `${res.bidderRates[b.id].rate},${res.bidderRates[b.id].deviation.toFixed(1)}%`).join(',')}
+`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
