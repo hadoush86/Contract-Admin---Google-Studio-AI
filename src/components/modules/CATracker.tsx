@@ -36,6 +36,7 @@ import {
   ModuleId
 } from '../../types';
 import { caAssistantChat } from '../../services/geminiService';
+import { calculateNetCertified, calculateRetentionDeduction, calculateIPCDueDate, calculateIPCSummary } from '../../utils/ipcCalculations';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import JSZip from 'jszip';
@@ -837,18 +838,14 @@ function IPCRegisterTab({ setup, ipcs, onUpdate, onAdd, onDraftLetter }: {
   onDraftLetter?: (data: Partial<LetterFormData>) => void
 }) {
   const stats = useMemo(() => {
-    const totalCertified = ipcs.reduce((sum, ipc) => sum + (ipc.status === 'Certified' || ipc.status === 'Paid' ? ipc.certifiedAmount : 0), 0);
-    const totalRetention = ipcs.reduce((sum, ipc) => sum + ipc.retentionDeduction, 0);
-    const totalAdvance = ipcs.reduce((sum, ipc) => sum + ipc.advancePaymentRecovery, 0);
-    const originalSum = setup?.originalContractSum || 0;
-    
+    const summary = calculateIPCSummary(ipcs, {
+      originalContractSum: setup?.originalContractSum || 0,
+      advancePaymentAmount: setup?.advancePaymentAmount || 0,
+    });
     return {
-      originalSum,
-      currentSum: originalSum, // + VOs
-      totalCertified,
-      remaining: originalSum - totalCertified,
-      totalRetention,
-      totalAdvance: (setup?.advancePaymentAmount || 0) - totalAdvance
+      ...summary,
+      currentSum: summary.originalSum, // + VOs
+      totalAdvance: summary.advanceBalance,
     };
   }, [ipcs, setup]);
 
@@ -858,14 +855,12 @@ function IPCRegisterTab({ setup, ipcs, onUpdate, onAdd, onDraftLetter }: {
         const updated = { ...ipc, [field]: value };
         // Auto calculations
         if (field === 'certifiedAmount' && setup) {
-          updated.retentionDeduction = (Number(value) * setup.retentionPercentage) / 100;
+          updated.retentionDeduction = calculateRetentionDeduction(Number(value), setup.retentionPercentage);
         }
         if (field === 'issuedDate') {
-          const date = new Date(value);
-          date.setDate(date.getDate() + 56);
-          updated.dueDate = date.toISOString().split('T')[0];
+          updated.dueDate = calculateIPCDueDate(value);
         }
-        updated.netCertified = Number(updated.certifiedAmount) - updated.retentionDeduction - updated.advancePaymentRecovery - updated.delayDamages - updated.otherDeductions;
+        updated.netCertified = calculateNetCertified(updated);
         return updated;
       }
       return ipc;
